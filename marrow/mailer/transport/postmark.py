@@ -1,9 +1,10 @@
-# encoding: utf-8
+# -*- coding: utf-8 -*-
 
 import urllib2
 import json
+import base64
 
-from marrow.mailer.exc import MailConfigurationException, DeliveryFailedException, MessageFailedException
+from marrow.mailer.exc import DeliveryFailedException, MessageFailedException
 
 __all__ = ['PostmarkTransport']
 
@@ -38,32 +39,29 @@ class PostmarkTransport(object):
             args['HtmlBody'] = message.rich.encode(message.encoding)
         
         if message.attachments:
-            # Not implemented yet
-            """
-            attachments = []
+            args['Attachments'] = []
             
             for attachment in message.attachments:
-                attachments.append((
-                        attachment['Content-Disposition'].partition(';')[2],
-                        attachment.get_payload(True)
-                    ))
-            
-            msg.attachments = attachments
-            """
-            raise MailConfigurationException()
+                args['Attachments'].append(
+                    {
+                        "Name": attachment.get_filename(),
+                        "Content": base64.b64encode(attachment.get_payload(decode=True)),
+                        "ContentType": attachment.get_content_type()
+                    }
+                )
 
         return args
 
     def _batchsend(self):
         request = urllib2.Request(
-                "https://api.postmarkapp.com/email/batch",
-                json.dumps(self.messages),
-                {
-                    'Accept': "application/json",
-                    'Content-Type': "application/json",
-                    'X-Postmark-Server-Token': self.key,
-                }
-            )
+            "https://api.postmarkapp.com/email/batch",
+            json.dumps(self.messages),
+            {
+                'Accept': "application/json",
+                'Content-Type': "application/json",
+                'X-Postmark-Server-Token': self.key,
+            }
+        )
 
         try:
             response = urllib2.urlopen(request)
@@ -74,7 +72,7 @@ class PostmarkTransport(object):
             if respcode >= 400 and respcode <= 499:
                 raise MessageFailedException(response.read())
             elif respcode >= 500 and respcode <= 599:
-                raise DeliveryFailedException(message, "Postmark service unavailable.")
+                raise DeliveryFailedException(self.messages[0], "Postmark service unavailable. Just diplaying first message of batch")
 
         del self.messages[:]
 
