@@ -1,6 +1,7 @@
-# encoding: utf-8
+# -*- coding: utf-8 -*-
 
 import urllib
+import urllib2
 
 from marrow.mailer.exc import MailConfigurationException, DeliveryFailedException, MessageFailedException
 
@@ -42,7 +43,7 @@ class SendgridTransport(object):
             args['bcc'] = [bcc.address.encode(message.encoding) for bcc in message.bcc]
         
         if message.reply:
-            args['replyto'] = message.reply.address.encode(message.encoding)
+            args['replyto'] = message.reply.encode(message.encoding)
         
         if message.rich:
             args['html'] = message.rich.encode(message.encoding)
@@ -62,16 +63,24 @@ class SendgridTransport(object):
             """
             raise MailConfigurationException()
 
+        request = urllib2.Request(
+                "https://sendgrid.com/api/mail.send.json",
+                urllib.urlencode(args, True)
+            )
+
         try:
-            response = urllib.urlopen("https://sendgrid.com/api/mail.send.json?" + urllib.urlencode(args, True))
-        except IOError:
+            response = urllib2.urlopen(request)
+        except (urllib2.HTTPError, urllib2.URLError):
             raise DeliveryFailedException(message, "Could not connect to Sendgrid.")
         else:
             respcode = response.getcode()
+
             if respcode >= 400 and respcode <= 499:
                 raise MessageFailedException(response.read())
             elif respcode >= 500 and respcode <= 599:
                 raise DeliveryFailedException(message, "Sendgrid service unavailable.")
+            
+            response.close()
     
     def shutdown(self):
         pass
